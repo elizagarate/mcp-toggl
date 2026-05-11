@@ -302,6 +302,58 @@ const tools: Tool[] = [
     },
   },
   {
+    name: 'toggl_create_time_entry',
+    description:
+      'Create a completed time entry with specific start and stop times. Use this for logging past work, historical entries, or any time entry that is not a live running timer.',
+    annotations: {
+      readOnlyHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        description: {
+          type: 'string',
+          description: 'Description of the time entry',
+        },
+        start: {
+          type: 'string',
+          description:
+            'Start datetime in ISO 8601 format (e.g. "2026-05-10T09:00:00+02:00" or "2026-05-10T07:00:00Z"). Required.',
+        },
+        stop: {
+          type: 'string',
+          description:
+            'Stop datetime in ISO 8601 format (e.g. "2026-05-10T12:30:00+02:00"). Required for completed entries.',
+        },
+        workspace_id: {
+          type: 'number',
+          description:
+            'Workspace ID. If omitted, uses TOGGL_DEFAULT_WORKSPACE_ID or the only available workspace.',
+        },
+        project_id: {
+          type: 'number',
+          description: 'Project ID (optional)',
+        },
+        task_id: {
+          type: 'number',
+          description: 'Task ID (optional)',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags for the entry',
+        },
+        billable: {
+          type: 'boolean',
+          description: 'Whether the entry is billable (default: false)',
+        },
+      },
+      required: ['start', 'stop'],
+    },
+  },
+  {
     name: 'toggl_stop_timer',
     description: 'Stop the currently running timer',
     annotations: {
@@ -734,6 +786,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 {
                   success: true,
                   message: 'Timer started',
+                  entry: hydrated[0],
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      case 'toggl_create_time_entry': {
+        const workspaceId = await resolveWorkspaceForTool(args, 'creating a time entry');
+
+        const start = args?.start as string;
+        const stop = args?.stop as string;
+
+        if (!start || !stop) {
+          return jsonResponse({ error: true, message: 'Both start and stop are required.' });
+        }
+
+        // Calculate duration in seconds from start/stop
+        const startMs = new Date(start).getTime();
+        const stopMs = new Date(stop).getTime();
+        if (isNaN(startMs) || isNaN(stopMs)) {
+          return jsonResponse({ error: true, message: 'Invalid date format. Use ISO 8601 (e.g. 2026-05-10T09:00:00+02:00).' });
+        }
+        if (stopMs <= startMs) {
+          return jsonResponse({ error: true, message: 'Stop time must be after start time.' });
+        }
+        const durationSeconds = Math.floor((stopMs - startMs) / 1000);
+
+        const entry = await api.createTimeEntry(workspaceId, {
+          description: args?.description as string | undefined,
+          start: start,
+          stop: stop,
+          duration: durationSeconds,
+          project_id: args?.project_id as number | undefined,
+          task_id: args?.task_id as number | undefined,
+          tags: args?.tags as string[] | undefined,
+          billable: args?.billable as boolean | undefined,
+        });
+
+        await ensureCache();
+        const hydrated = await cache.hydrateTimeEntries([entry]);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: 'Time entry created',
                   entry: hydrated[0],
                 },
                 null,
