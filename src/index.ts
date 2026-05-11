@@ -560,9 +560,9 @@ const tools: Tool[] = [
         },
         redact_titles: {
           type: 'boolean',
-          default: false,
+          default: true,
           description:
-            'When true, returned events keep app name, timestamps, duration, idle state, and desktop_id, but set title to null.',
+            'When true (default), returned events keep app name, timestamps, duration, idle state, and desktop_id, but set title to null. Set to false explicitly to include window titles (may contain sensitive data).',
         },
         limit: {
           type: 'number',
@@ -595,9 +595,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const maskEmail = (e?: string) => {
           if (!e) return undefined as unknown as string;
           const [user, domain] = e.split('@');
-          if (!domain) return '***';
-          const u = user.length <= 2 ? '*'.repeat(user.length) : `${user[0]}***${user.slice(-1)}`;
-          return `${u}@${domain}`;
+          if (!user || !domain) return '***@***';
+          const u = user.length <= 2 ? '*'.repeat(user.length) : `${user[0]}${'*'.repeat(Math.min(user.length - 2, 3))}${user.slice(-1)}`;
+          const domainParts = domain.split('.');
+          const tld = domainParts.pop() || '';
+          const domainName = domainParts.join('.');
+          const d = domainName.length <= 2 ? '*'.repeat(domainName.length) : `${domainName[0]}${'*'.repeat(Math.min(domainName.length - 2, 3))}${domainName.slice(-1)}`;
+          return `${u}@${d}.${tld}`;
         };
         return {
           content: [

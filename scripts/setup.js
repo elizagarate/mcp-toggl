@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 import { promises as fs } from 'fs';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 console.log('🚀 MCP Toggl Server Setup\n');
 
@@ -32,12 +32,12 @@ async function setup() {
     
     // Install dependencies
     console.log('📦 Installing dependencies...');
-    await execAsync('npm install');
+    await execFileAsync('npm', ['install']);
     console.log('✅ Dependencies installed');
     
     // Build the project
     console.log('🔨 Building the project...');
-    await execAsync('npm run build');
+    await execFileAsync('npm', ['run', 'build']);
     console.log('✅ Project built successfully');
     
     // Display configuration instructions

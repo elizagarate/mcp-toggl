@@ -36,7 +36,7 @@ export function buildTimelineResponse(
   const endTs = range?.end ? range.end.getTime() / 1000 : null;
   const appFilter = typeof args?.app === 'string' ? args.app.toLowerCase() : null;
   const includeEvents = args?.include_events !== false;
-  const redactTitles = args?.redact_titles === true;
+  const redactTitles = args?.redact_titles !== false;
   const rawLimit = typeof args?.limit === 'number' ? args.limit : 50;
   const limit = Math.max(1, Math.min(Math.floor(rawLimit), 1000));
 

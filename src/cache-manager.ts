@@ -10,6 +10,7 @@ import type {
   CacheEntry,
   CacheStats,
   CacheConfig,
+  ITogglAPIClient,
 } from './types.js';
 
 export class CacheManager {
@@ -32,13 +33,21 @@ export class CacheManager {
   };
 
   private config: CacheConfig;
-  private api: any; // Will be set after API client is created
+  private api: ITogglAPIClient | null = null;
 
   constructor(config: CacheConfig) {
     this.config = config;
+    // Periodically prune expired cache entries every 5 minutes
+    this._pruneInterval = setInterval(() => this.pruneExpired(), 5 * 60 * 1000);
+    // Allow the process to exit even if the interval is still active
+    if (this._pruneInterval.unref) {
+      this._pruneInterval.unref();
+    }
   }
 
-  setAPI(api: any): void {
+  private _pruneInterval: ReturnType<typeof setInterval>;
+
+  setAPI(api: ITogglAPIClient): void {
     this.api = api;
   }
 

@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { toLocalYMD } from './utils.js';
 import type {
   Workspace,
@@ -51,6 +50,13 @@ export class TogglAPIError extends Error {
 }
 
 const MAX_AUTO_RETRY_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
 
 export class TogglAPI {
   private baseUrl = 'https://api.track.toggl.com/api/v9';
@@ -74,7 +80,7 @@ export class TogglAPI {
 
     for (let i = 0; i < retries; i++) {
       try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method,
           headers: this.headers,
           body: body ? JSON.stringify(body) : undefined,
@@ -101,7 +107,9 @@ export class TogglAPI {
         }
 
         if (!response.ok) {
-          const text = await response.text();
+          const rawText = await response.text();
+          // Truncate server response to avoid leaking sensitive information
+          const text = rawText.length > 200 ? rawText.slice(0, 200) + '... (truncated)' : rawText;
           if (response.status === 402) {
             const retryAfterSeconds = parseQuotaResetSeconds(text);
             throw new TogglAPIError({
@@ -348,23 +356,24 @@ export class TogglAPI {
     return this.getTimeEntriesForDateRange(firstDay, firstDayNextMonth);
   }
 
-  // Reports API endpoints (if needed)
-  async getDetailedReport(workspaceId: number, params: any): Promise<any> {
-    // This would use the Reports API v3 if needed
-    // https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/time_entries
-    const reportsUrl = `https://api.track.toggl.com/reports/api/v3/workspace/${workspaceId}/search/time_entries`;
-
-    const response = await fetch(reportsUrl, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(params),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Reports API error: ${response.status}`);
+  // Reports API endpoints
+  async getDetailedReport(workspaceId: number, params: Record<string, unknown>): Promise<unknown> {
+    if (!Number.isInteger(workspaceId) || workspaceId <= 0) {
+      throw new Error(`Invalid workspace ID: ${workspaceId}`);
     }
-
-    return response.json();
+    // Use the Reports API v3 via the standard request method for retry/rate-limiting.
+    // Temporarily swap baseUrl to the reports endpoint.
+    const originalBaseUrl = this.baseUrl;
+    this.baseUrl = `https://api.track.toggl.com/reports/api/v3`;
+    try {
+      return await this.request<unknown>(
+        'POST',
+        `/workspace/${workspaceId}/search/time_entries`,
+        params
+      );
+    } finally {
+      this.baseUrl = originalBaseUrl;
+    }
   }
 
   async getTimeline(): Promise<TimelineEvent[]> {
@@ -373,7 +382,7 @@ export class TogglAPI {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method: 'GET',
           headers: this.headers,
         });
@@ -397,9 +406,11 @@ export class TogglAPI {
           });
         }
 
-        const text = await response.text();
+        const rawText = await response.text();
 
         if (!response.ok) {
+          // Truncate server response to avoid leaking sensitive information
+          const text = rawText.length > 200 ? rawText.slice(0, 200) + '... (truncated)' : rawText;
           if (response.status === 400 && parseTimelineError(text) === 'Timeline is not enabled') {
             throw new TimelineNotEnabledError();
           }
@@ -415,7 +426,7 @@ export class TogglAPI {
           throw err;
         }
 
-        const data = JSON.parse(text) as unknown;
+        const data = JSON.parse(rawText) as unknown;
         if (!Array.isArray(data)) {
           throw new Error('Timeline API returned invalid response format');
         }

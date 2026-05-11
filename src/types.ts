@@ -282,6 +282,22 @@ export interface TogglError {
   details?: any;
 }
 
+// Interface for the API client used by CacheManager
+export interface ITogglAPIClient {
+  getMe(): Promise<User>;
+  getWorkspaces(): Promise<Workspace[]>;
+  getWorkspace(workspaceId: number): Promise<Workspace>;
+  getProjects(workspaceId: number): Promise<Project[]>;
+  getProject(projectId: number): Promise<Project>;
+  getClients(workspaceId: number): Promise<Client[]>;
+  getClient(clientId: number): Promise<Client>;
+  getTasks(workspaceId: number, projectId: number): Promise<Task[]>;
+  getTask(workspaceId: number, projectId: number, taskId: number): Promise<Task>;
+  getTags(workspaceId: number): Promise<Tag[]>;
+  getTag(workspaceId: number, tagId: number): Promise<Tag>;
+  getUser(userId: number): Promise<User>;
+}
+
 // Tool response types
 export interface ToolResponse<T = any> {
   success: boolean;
